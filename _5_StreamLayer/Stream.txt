@@ -1,0 +1,153 @@
+package cts.projectwork
+
+import org.apache.spark.SparkConf
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.storage.StorageLevel
+import org.apache.log4j._
+import org.apache.spark.sql.functions._
+import org.apache.spark.streaming._
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.{SparkContext, SparkConf}
+import org.apache.hadoop.hive.hbase.HBaseStorageHandler
+object StreamLayer1 {
+
+  /*
+while read line; do echo -e "$line\n"; sleep .1; done < flightfeed.csv | nc -lk 9990
+
+spark-submit --class "cts.projectwork.StreamLayer1" --master local[*] StreamLayer.jar localhost 9990 5 60 5 750
+*/
+
+  case class Feed(FlightNo: String, DistanceCovered: Double, Humidity: Int, Temp: Int, Latitude: String, Longitude: String, AltitudeInFeet: Int)
+
+  def model_mapper(T: (String, Double, Int, Int, String, String, Int)): Feed = {
+    val feed: Feed = Feed(T._1, T._2, T._3, T._4, T._5, T._6, T._7)
+
+    return feed
+  }
+
+  def generic_mapper(line: String) = {
+    val fields = line.split(',')
+    if (fields.length == 7) {
+      if (!fields(0).startsWith("flight_no")) { (fields(0), fields(1).toDouble, fields(2).toInt, fields(3).toInt, fields(4), fields(5), fields(6).toInt) }
+      else { ("NA", 0.00, 0, 0, "NA", "NA", 0) }
+    } else { ("NA", 0.00, 0, 0, "NA", "NA", 0) }
+  }
+
+  def main(args: Array[String]) {
+    Logger.getLogger("org").setLevel(Level.ERROR)
+
+    val sparkConf = new SparkConf().setAppName("cts.analytics.Aviation.SpeedLayer")
+    val sc = new StreamingContext(sparkConf, Seconds(args(2).toInt))
+    sc.checkpoint("/tmp/Aviation1");
+
+    val datastream = sc.socketTextStream(args(0), args(1).toInt, StorageLevel.MEMORY_AND_DISK_SER)
+
+    val mapdatatopair = datastream.map(generic_mapper).filter(t => (t._1 != "NA"))
+
+    val RequiredDStream = mapdatatopair.transform { rdd =>
+      {
+        val spark =  new org.apache.spark.sql.hive.HiveContext(rdd.sparkContext)
+        import spark.implicits._
+
+        val FlightTravelDF = rdd.map(model_mapper).toDF()
+        FlightTravelDF.createOrReplaceTempView("FlightTravel")
+
+        val FlightTravel =
+          spark.sql("""
+            select 
+            FlightNo,
+            min(DistanceCovered) as ActualMin,            
+            max(DistanceCovered) as ActualMax,
+            (min(DistanceCovered)+((""" + args(5) + """/3600)*""" + args(2) + """)) as PlannedMax,            
+            (max(DistanceCovered)-min(DistanceCovered)) as ActualDiff,
+            round(((min(DistanceCovered)+((""" + args(5) + """/3600)*""" + args(2) + """))-max(DistanceCovered)),2) as DiffBetweenPlannedAndActualMax
+            from FlightTravel 
+            group by FlightNo   
+            """)
+
+        FlightTravel.rdd
+      }
+    }
+
+    val FlightArrivalDStream = RequiredDStream.map(T =>
+      (T.getAs("FlightNo").toString(), T.getAs("DiffBetweenPlannedAndActualMax").toString().toDouble))
+    val FlightArrivalWindow =
+      FlightArrivalDStream.reduceByKeyAndWindow((a: Double, b: Double) => (a + b), (a: Double, b: Double) => (a - b),
+        Durations.seconds(args(3).toInt), Durations.seconds(args(4).toInt))
+    FlightArrivalWindow.foreachRDD {
+      (rdd, time) =>
+        if (!rdd.isEmpty()) {
+          val spark = SparkSession.builder().appName("SparkSessionZipsExample").enableHiveSupport().getOrCreate()
+          import spark.implicits._
+           spark.sql("SET hive.mapred.supports.subdirectories =true")
+           spark.sql(" SET mapreduce.input.fileinputformat.input.dir.recursive=true")
+        
+          val FlightArrivalDF = rdd.toDF("Flight", "Delay")
+          FlightArrivalDF.createOrReplaceTempView("FlightArrival")
+
+          val FlightArrival =
+            spark.sql("select * from FlightArrival order by Delay desc")
+
+          println(s"=== Flight Arrival === [ $time ] === [ Window Length : " + args(3) + " Seconds / Slide Interval : " + args(4) + " Seconds ] ===")
+
+          FlightArrival.select(FlightArrival("Flight"),FlightArrival("Delay")).show(false)
+        }
+    }
+    val WeatherDStream = mapdatatopair.transform { rdd =>
+      {
+        val spark = new org.apache.spark.sql.hive.HiveContext(rdd.sparkContext)
+        import spark.implicits._
+
+        val FlightTravelDF = rdd.map(model_mapper).toDF()
+        FlightTravelDF.createOrReplaceTempView("FlightTravel")
+
+        val FlightTravel =
+          spark.sql("""
+            select 
+            FlightNo,
+            Avg(Temp) AvTemp,
+            Avg(Humidity) AvHum,
+            Avg(AltitudeInFeet) AvAltFeet
+            from FlightTravel
+            group by FlightNo 
+            """)
+        val FlightTravel_ = FlightTravel.rdd.map(r => {
+          val FlightNo = r.getAs("FlightNo").toString()
+          val Humidity = r.getAs("AvHum").toString().toDouble
+          val Temp = r.getAs("AvTemp").toString().toDouble
+          val AltitudeInFeet = r.getAs("AvAltFeet").toString().toDouble
+          var Weather = "Pleasant"
+
+          if (Temp > 19 && Temp <= 25 && Humidity > 83 && Humidity <= 85 && AltitudeInFeet > 31000 && AltitudeInFeet <= 40000) { Weather = "Stormy" }
+          if (Temp > 19 && Temp <= 25 && Humidity > 85 && Humidity <= 90 && AltitudeInFeet > 31000 && AltitudeInFeet <= 40000) { Weather = "Rainy" }
+          if (Temp > 19 && Temp <= 25 && Humidity > 90 && Humidity <= 95 && AltitudeInFeet > 31000 && AltitudeInFeet <= 40000) { Weather = "Sunny" }
+
+          (r.getAs("FlightNo").toString(),Weather)
+        })
+        FlightTravel_
+      }
+    }
+    WeatherDStream.foreachRDD {
+      (rdd, time) =>
+        if (!rdd.isEmpty()) {
+          val sparkContext = rdd.sparkContext
+          val sqlContext = new org.apache.spark.sql.SQLContext(sparkContext)
+          import sqlContext.implicits._
+          
+
+          val CurrentCondition = rdd.toDF("FlightNo","Weather")
+
+          println(s"=== Current Condition === [ $time ] === [ Batch Size : " + args(2) + " Seconds ] ===")
+
+          CurrentCondition.select(
+            CurrentCondition("FlightNo"), CurrentCondition("Weather")).show(false)
+        }
+    }
+
+    sc.start()
+    sc.awaitTermination()
+  }
+}
+
