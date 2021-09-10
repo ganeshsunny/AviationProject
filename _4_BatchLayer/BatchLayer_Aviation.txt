@@ -1,0 +1,163 @@
+package cts.projectwork
+
+import org.apache.spark._
+import org.apache.spark.SparkContext._
+import org.apache.spark.sql._
+import org.apache.log4j._
+import org.apache.spark.storage.StorageLevel._
+
+object BatchLayer_aviation
+{
+
+val run = """
+spark-submit --class "cts.projectwork.BatchLayer_aviation" --master local[*] --jars hive-hbase-handler-2.1.1.jar \
+BatchLayer.jar quickstart.cloudera /aviation/transaction/hot/*/*  /aviation/passengers/hot/*/* /aviation/tickets/hot/*/*
+"""  
+  
+  case class transaction(tr_id:Int, tr_type:String,tr_source:String)
+  case class passenger(pid:Int, fname:String,address:String,phone:String)
+  case class ticket(source:String, destination:String,classtype:String)
+  
+  def transmapper(line:String): transaction = {
+    val fields = line.split(',')    
+    val _transaction:transaction = transaction(fields(0).toInt, fields(1).toString,fields(2).toString)
+    return _transaction
+}
+  def passengermapper(line:String): passenger = {
+    val fields = line.split(',')    
+    val _passenger:passenger = passenger(fields(0).toInt, fields(1).toString,fields(3).toString,fields(4).toString)
+    return _passenger
+  }
+   def ticketmapper(line:String): ticket = {
+    val fields = line.split(',')    
+    val _ticket:ticket = ticket(fields(1).toString, fields(2).toString,fields(6).toString)
+    return _ticket
+}
+  
+  def main(args: Array[String]) 
+  {
+    Logger.getLogger("org").setLevel(Level.ERROR)
+
+    val SparkConf = new SparkConf().setAppName("cts.projectwork.BatchLayer_aviation")
+    val sc = new SparkContext(SparkConf)
+    val spark = new org.apache.spark.sql.SQLContext(sc)
+    val hive = new org.apache.spark.sql.hive.HiveContext(sc)
+    hive.setConf("hive.mapred.supports.subdirectories","true")
+    hive.setConf("mapreduce.input.fileinputformat.input.dir.recursive","true")  
+    import spark.implicits._
+
+    val trans_lines = spark.sparkContext.textFile("hdfs://"+args(0)+":8020"+args(1))
+    val passenger_lines = spark.sparkContext.textFile("hdfs://"+args(0)+":8020"+args(2))
+    val ticket_lines = spark.sparkContext.textFile("hdfs://"+args(0)+":8020"+args(3))
+    trans_lines.persist(MEMORY_AND_DISK)
+    passenger_lines.persist(MEMORY_AND_DISK)
+    ticket_lines.persist(MEMORY_AND_DISK)
+
+    
+     
+    val transdf = trans_lines.map(transmapper).toDF()
+    val passengerdf = passenger_lines.map(passengermapper).toDF()    
+    val ticketdf = ticket_lines.map(ticketmapper).toDF()
+    
+    transdf.registerTempTable("transaction")
+    passengerdf.registerTempTable("passenger")
+    ticketdf.registerTempTable("ticket")  
+    
+    transdf.show()
+    passengerdf.show()
+    ticketdf.show()
+   
+    val Q1 = spark.sql("""
+	select tr_source,count(tr_source) Total from transaction  group by tr_source order by Total desc limit 1;
+      """);
+    Q1.show(false)
+    val Q3 = spark.sql("""
+	select fname,address,phone,count(pid) Total from passenger join ticket using(pid) group by pid order by Total desc limit 5;
+      """);
+    Q3.show(false)
+    val Q5 = spark.sql("""
+	select source,destination,class,count(date_of_cancellation) Total from ticket where date_of_cancellation is not NULL order by total desc limit 1;
+      """);
+    Q5.show(false)
+    
+    sc.stop()
+  }
+}
+//
+package cts.projectwork
+
+import org.apache.spark._
+import org.apache.spark.SparkContext._
+import org.apache.spark.sql._
+import org.apache.log4j._
+import org.apache.spark.storage.StorageLevel._
+
+object BatchLayer_aviation2
+{
+
+val run = """
+spark-submit --class "cts.projectwork.BatchLayer_aviation" --master local[*] --jars hive-hbase-handler-2.1.1.jar \
+BatchLayer.jar   
+"""  
+  
+  case class pilot(pilot_id:Int, pilot_name:String, pilot_type:String, pilot_experience:Int, pilot_rating:Float)
+  case class flight_pilot(pilot_id:Int, flight_code:Int)
+  case class flight(flight_code:Int, source:String,destination:String)
+  
+  def pilotmapper(row:Row): pilot = {    
+    val _pilot:pilot = pilot(row.getAs("PILOT_ID"),row.getAs("PILOT_NAME"),row.getAs("PILOT_TYPE"),row.getAs("PILOT_EXPERIENCE"),row.getAs("PILOT_RATING"))
+    return _pilot
+  }
+  def flight_pilotmapper(row:Row): flight_pilot = {    
+    val _flight:flight_pilot = flight_pilot(row.getAs("PILOT_ID"),row.getAs("FLIGHT_CODE"))
+    return _flight
+  }
+   def flightmapper(row:Row): flight = {    
+    val _flights:flight = flight(row.getAs("FLIGHT_CODE"),row.getAs("SOURCE"),row.getAs("DESTINATION"))
+    return _flights
+  }
+  
+  def main(args: Array[String]) 
+  {
+    Logger.getLogger("org").setLevel(Level.ERROR)
+
+    val SparkConf = new SparkConf().setAppName("cts.projectwork.BatchLayer_aviation")
+    val sc = new SparkContext(SparkConf)
+    val spark = new org.apache.spark.sql.SQLContext(sc)
+    val hive = new org.apache.spark.sql.hive.HiveContext(sc)
+    hive.setConf("hive.mapred.supports.subdirectories","true")
+    hive.setConf("mapreduce.input.fileinputformat.input.dir.recursive","true")  
+    import spark.implicits._
+
+    val pilotdf_ = hive.table("aviation.pilot")
+    val flightdf_ = hive.table("aviation.flight_pilot")
+    val flightsdf_ = hive.table("aviation.flight")    
+
+    
+     
+    val pilotdf = pilotdf_.map(pilotmapper).toDF()
+    val flightdf = flightdf_.map(flight_pilotmapper).toDF()    
+    val flightsdf = flightsdf_.map(flightmapper).toDF()
+    
+    pilotdf.registerTempTable("pilot")
+    flightdf.registerTempTable("flight_pilot")
+    flightsdf.registerTempTable("flight")
+      
+    pilotdf.show()
+    flightdf.show()
+    flightsdf.show()
+   
+    
+    val Q2 = spark.sql("""
+	select pilot_name,pilot_type,pilot_experience,count(pilot_id) Total from pilot join flight_pilot using(pilot_id) group by pilot_id order by PILOT_RATING desc limit 1;
+      """);
+    Q2.show(false)
+        val Q4 = spark.sql("""
+	select flight_code,source,destination,arrival,departure from flight where status = 'Delayed';
+      """);
+    Q4.show(false)
+    
+    sc.stop()
+  }
+}
+
