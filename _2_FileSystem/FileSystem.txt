@@ -1,0 +1,23 @@
+******************Path and Permissions for avition of Transaction table of type hot and cold***************
+sudo -u hdfs hadoop fs -mkdir /aviation
+sudo -u hdfs hadoop fs -mkdir /aviation/transaction
+sudo -u hdfs hadoop fs -mkdir /aviation/transaction/hot
+sudo -u hdfs hadoop fs -chown root /aviation/transaction/hot
+sudo -u hdfs hadoop fs -chmod 777 /aviation/transaction/hot
+sudo -u hdfs hadoop fs -mkdir /aviation/transaction/cold
+sudo -u hdfs hadoop fs -chown root /aviation/transaction/cold
+sudo -u hdfs hadoop fs -chmod 777 /aviation/transaction/cold
+******************Path and Permissions for avition of Passenger table of type hot and cold*****************
+sudo -u hdfs hadoop fs -mkdir /aviation/passenger
+sudo -u hdfs hadoop fs -mkdir /aviation/passenger/hot
+sudo -u hdfs hadoop fs -chown root /aviation/passenger/hot
+sudo -u hdfs hadoop fs -chmod 777 /aviation/passenger/hot
+******************Path and Permissions for avition of Tickets table of type hot and cold*****************
+sudo -u hdfs hadoop fs -mkdir /aviation/tickets
+sudo -u hdfs hadoop fs -mkdir /aviation/tickets/hot
+sudo -u hdfs hadoop fs -chown root /aviation/tickets/hot
+sudo -u hdfs hadoop fs -chmod 777 /aviation/tickets/hot
+sudo -u hdfs hadoop fs -mkdir /aviation/tickets/cold
+sudo -u hdfs hadoop fs -chmod 777 /aviation/tickets/cold
+
+
