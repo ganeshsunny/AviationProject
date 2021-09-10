@@ -1,0 +1,172 @@
+//->Creating table in hbase
+create 'Aviation','City','Airline','Flight','Routes','Pilot','Employee1','Employee2','Airport','Flight_Pilot'
+//->importing data to hbase using sqoop import
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table CITY  --hbase-table Aviation --column-family City --hbase-row-key CNAME -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table AIRLINE  --hbase-table Aviation --column-family Airline --hbase-row-key AIRLINEID -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table FLIGHT --hbase-table Aviation --column-family Flight --hbase-row-key FLIGHT_CODE -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table ROUTES --hbase-table Aviation --column-family Routes --hbase-row-key ROUTE_ID -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table PILOT --hbase-table Aviation --column-family Pilot --hbase-row-key PILOT_ID -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table EMPLOYEE1 --hbase-table Aviation --column-family Employee1 --hbase-row-key SSN -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table EMPLOYEE2 --hbase-table Aviation --column-family Employee2 --hbase-row-key JOBTYPE -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table AIRPORT --hbase-table Aviation --column-family Airport --hbase-row-key AP_NAME -m 1 -P
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table FLIGHT_PILOT --hbase-table Aviation --column-family Flight_Pilot --hbase-row-key PILOT_ID -m 1 -P
+//->Creating Hive external table
+************************Loading city table
+create external table City(
+CNAME VARCHAR(15),
+STATE VARCHAR(15), 
+COUNTRY VARCHAR(30))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,City:STATE,City:COUNTRY")
+tblproperties("hbase.table.name"="Aviation");
+************************Loading Airline table
+create external table Airline(
+AIRLINEID VARCHAR(3),
+AL_NAME VARCHAR(50),
+IATA VARCHAR(3),
+ICAO VARCHAR(5),
+CALL_SIGN VARCHAR(50),
+COUNTRY VARCHAR(50))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Airline:AL_NAME,Airline:IATA,Airline:ICAO,Airline:CALL_SIGN,Airline:COUNTRY")
+tblproperties("hbase.table.name"="Aviation");
+******************************Loading Flight Table
+create external table Flight(
+FLIGHT_CODE VARCHAR(10),
+SOURCE VARCHAR(3),
+DESTINATION VARCHAR(3),
+ARRIVAL VARCHAR(10),
+DEPARTURE VARCHAR(10),
+STATUS VARCHAR(10),
+DURATION VARCHAR(30),
+FLIGHTTYPE VARCHAR(10),
+LAYOVER_TIME VARCHAR(30),
+NO_OF_STOPS INT,
+AIRLINEID VARCHAR(3))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Flight:SOURCE,Flight:DESTINATION,Flight:ARRIVAL,Flight:DEPARTURE,Flight:STATUS,Flight:DURATION,Flight:FLIGHTTYPE,Flight:LAYOVER_TIME,Flight:NO_OF_STOPS,Flight:AIRLINEID")
+tblproperties("hbase.table.name"="Aviation");
+****************************Loading Routes Table
+create external table Routes(
+ROUTE_ID INT,
+ARRIVAL VARCHAR(10),
+DEPARTURE VARCHAR(10),
+AIRLINEID VARCHAR(3))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Routes:ARRIVAL,Routes:DEPARTURE,Routes:AIRLINEID")
+tblproperties("hbase.table.name"="Aviation");
+*******************************Loading Pilots table
+create external table Pilot(
+PILOT_ID INT,
+PILOT_NAME VARCHAR(20),
+PILOT_TYPE VARCHAR(20),
+PILOT_EXPERIENCE INT,
+PILOT_SALARY INT)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Pilot:PILOT_NAME,Pilot:PILOT_TYPE,Pilot:PILOT_EXPERIENCE,Pilot:PILOT_SALARY")
+tblproperties("hbase.table.name"="Aviation");
+******************Loading employee1 table
+create external table Employee1(
+SSN INT,
+FNAME VARCHAR(20),
+LNAME VARCHAR(20),
+ADDRESS VARCHAR(100),
+PHONE VARCHAR(20),
+AGE INT,
+SEX VARCHAR(1),
+JOBTYPE VARCHAR(30),
+ASTYPE VARCHAR(30),
+ETYPE VARCHAR(30),
+SHIFT VARCHAR(20),
+POSITION VARCHAR(30),
+AP_NAME VARCHAR(100))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Employee1:FNAME,Employee1:LNAME,Employee1:ADDRESS,Employee1:PHONE,Employee1:AGE,Employee1:SEX,Employee1:JOBTYPE,Employee1:ASTYPE,Employee1:ETYPE,Employee1:SHIFT,Employee1:POSITION,Employee1:AP_NAME")
+tblproperties("hbase.table.name"="Aviation");
+******************************Loading Employee2 table
+create external table Employee2(
+JOBTYPE VARCHAR(30),
+SALARY INT)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Employee2:SALARY")
+tblproperties("hbase.table.name"="Aviation");
+****************************Loading Airport table
+create external table Airport(
+AP_NAME VARCHAR(100),
+STATE VARCHAR(15), 
+COUNTRY VARCHAR(30),
+CNAME VARCHAR(15))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Airport:STATE,Airport:COUNTRY,Airport:CNAME")
+tblproperties("hbase.table.name"="Aviation");
+*********************Loading Flight_Pilot table
+create external table Flight_Pilot(
+PILOT_ID INT,
+FLIGHT_CODE VARCHAR(10))
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+with serdeproperties ("hbase.columns.mapping"=":key,Flight_Pilot:FLIGHT_CODE")
+tblproperties("hbase.table.name"="Aviation");
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+*****************ETL for transaction of type hot table
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TRANSACTION -m 1 --target-dir /aviation/transactions/hot/20052020 -P --where "TR_DATE > 2016-12-31" --incremental append --check-column TR_DATE
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TRANSACTION -m 1 --target-dir /aviation/transactions/hot/21052020 -P --incremental append --check-column TR_DATE --last-value 2020-05-20
+****************ETl for ticket of type hot table
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TICKET -m 1 --target-dir /aviation/tickets/hot/20052020 -P --where "DATE_OF_BOOKING > 2016-12-31" --incremental append --check-column DATE_OF_BOOKING
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TICKET -m 1 --target-dir /aviation/tickets/hot/21052020 -P --incremental append --check-column date_of_booking --last-value 2020-05-20
+**************ETL for passenger of type hot table
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table PASSENGER -m 1 --target-dir /aviation/passenger/hot/20052020 -P --incremental append --check-column pid
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table PASSENGER -m 3 --target-dir /aviation/passenger/hot/21052020 -P --incremental append --check-column pid --last-value 25
+*********************ETL for transaction of type cold table
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TRANSACTION -m 1 --target-dir /aviation/transaction/cold/onetimeETL --where "TR_DATE <= 2016-12-31" -P --compress
+*********************ETL for ticket of type cold table
+sqoop import --connect jdbc:mysql://quickstart.cloudera/aviation --username root --table TIKCET -m 1 --target-dir /aviation/tickets/cold/onetimeETL -P --where "DATE_OF_BOOKING <= 2016-12-31" --compress  
+
+**********************Loading hot data into transaction table
+CREATE EXTERNAL TABLE IF NOT EXISTS transaction(
+TR_ID INT,
+TR_TYPE VARCHAR(20),
+TR_SOURCE VARCHAR(20),
+CARDNUMBER INT,
+UPI_ID VARCHAR(20),
+TR_DATE DATE,
+PID INT)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/aviation/transaction/hot';
+****
+set hive.input.dir.recursive=true;
+set hive.mapred.supports.subdirectories=true;
+set hive.supports.subdirectories=true;
+set mapred.input.dir.recursive=true;
+***********************Loading data into tickets table
+CREATE EXTERNAL TABLE IF NOT EXISTS tickets(
+TICKET_NUMBER INT,
+SOURCE VARCHAR(3),
+DESTINATION VARCHAR(3),
+DATE_OF_BOOKING DATE,
+DATE_OF_TRAVEL DATE,
+SEATNO VARCHAR(5),
+CLASS VARCHAR(15),
+DATE_OF_CANCELLATION DATE,
+PID INT)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/aviation/tickets/hot';
+******************************Loading data into passengers table
+CREATE EXTERNAL TABLE IF NOT EXISTS passenger(
+PID INT,
+FNAME VARCHAR(20),
+LNAME VARCHAR(20),
+ADDRESS VARCHAR(100),
+PHONE VARCHAR(20),
+AGE INT,
+SEX VARCHAR(1),
+FLIGHT_CODE VARCHAR(10),
+PASSPORT VARCHAR(50))
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/aviation/passenger/hot';
